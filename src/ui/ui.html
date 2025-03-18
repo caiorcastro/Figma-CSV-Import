@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>CSV Import - Times de Futebol</title>
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      margin: 0;
+      padding: 20px;
+      color: #333;
+    }
+    h2 {
+      margin-top: 0;
+      color: #333;
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    button {
+      background-color: #18A0FB;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 16px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    button:hover {
+      background-color: #0D8DE3;
+    }
+    button:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+    .file-upload {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .status {
+      padding: 12px;
+      border-radius: 6px;
+      margin-top: 16px;
+      display: none;
+    }
+    .success {
+      background-color: #E9F7EF;
+      color: #27AE60;
+      display: block;
+    }
+    .error {
+      background-color: #FDEDEC;
+      color: #E74C3C;
+      display: block;
+    }
+    .info {
+      background-color: #EBF5FB;
+      color: #3498DB;
+      display: block;
+    }
+    .file-info {
+      margin-top: 8px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Importar Times de Futebol</h2>
+    <p>Este plugin importa dados de planilhas Excel/XLSX e cria cards para cada time de futebol.</p>
+    
+    <div class="file-upload">
+      <label for="arquivo">Selecione a planilha:</label>
+      <input type="file" id="arquivo" accept=".xlsx,.xls" />
+      <div id="file-info" class="file-info"></div>
+    </div>
+    
+    <button id="importar" disabled>Importar Dados</button>
+    <button id="fechar">Fechar Plugin</button>
+    
+    <div id="status" class="status"></div>
+  </div>
+
+  <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+  <script>
+    // Elementos do DOM
+    const importarBtn = document.getElementById('importar');
+    const fecharBtn = document.getElementById('fechar');
+    const arquivoInput = document.getElementById('arquivo');
+    const fileInfoEl = document.getElementById('file-info');
+    const statusEl = document.getElementById('status');
+    
+    // Armazenar os dados processados
+    let dadosProcessados = null;
+    
+    // Manipulador para o input de arquivo
+    arquivoInput.onchange = (e) => {
+      const arquivo = e.target.files[0];
+      if (!arquivo) {
+        fileInfoEl.textContent = "";
+        importarBtn.disabled = true;
+        return;
+      }
+      
+      fileInfoEl.textContent = `Arquivo selecionado: ${arquivo.name}`;
+      statusEl.textContent = "Processando arquivo...";
+      statusEl.className = "status info";
+      statusEl.style.display = "block";
+      
+      // Ler o arquivo
+      const leitor = new FileReader();
+      leitor.onload = (event) => {
+        try {
+          const dados = new Uint8Array(event.target.result);
+          const workbook = XLSX.read(dados, { type: 'array' });
+          
+          // Obter a primeira planilha
+          const primeiraAba = workbook.SheetNames[0];
+          const planilha = workbook.Sheets[primeiraAba];
+          
+          // Converter para JSON
+          dadosProcessados = XLSX.utils.sheet_to_json(planilha);
+          
+          if (dadosProcessados && dadosProcessados.length > 0) {
+            statusEl.textContent = `Arquivo processado com sucesso! Encontrados ${dadosProcessados.length} registros.`;
+            statusEl.className = "status success";
+            importarBtn.disabled = false;
+          } else {
+            statusEl.textContent = "Não foram encontrados dados válidos na planilha.";
+            statusEl.className = "status error";
+            importarBtn.disabled = true;
+          }
+        } catch (error) {
+          statusEl.textContent = `Erro ao processar o arquivo: ${error.message}`;
+          statusEl.className = "status error";
+          importarBtn.disabled = true;
+          dadosProcessados = null;
+        }
+      };
+      
+      leitor.onerror = () => {
+        statusEl.textContent = "Erro ao ler o arquivo.";
+        statusEl.className = "status error";
+        importarBtn.disabled = true;
+        dadosProcessados = null;
+      };
+      
+      // Ler o arquivo como ArrayBuffer
+      leitor.readAsArrayBuffer(arquivo);
+    };
+    
+    // Manipulador para o botão de importar
+    importarBtn.onclick = () => {
+      if (!dadosProcessados) {
+        statusEl.textContent = "Por favor, selecione um arquivo válido primeiro.";
+        statusEl.className = "status error";
+        return;
+      }
+      
+      statusEl.textContent = "Importando dados, aguarde...";
+      statusEl.className = "status info";
+      
+      // Enviar mensagem para o plugin com os dados processados
+      parent.postMessage({ 
+        pluginMessage: { 
+          type: 'importar-dados',
+          dados: dadosProcessados
+        } 
+      }, '*');
+    };
+    
+    // Manipulador para o botão de fechar
+    fecharBtn.onclick = () => {
+      parent.postMessage({ pluginMessage: { type: 'fechar' } }, '*');
+    };
+    
+    // Ouvir mensagens do plugin
+    window.onmessage = (event) => {
+      const message = event.data.pluginMessage;
+      
+      if (!message) return;
+      
+      if (message.type === 'init') {
+        statusEl.textContent = "Plugin inicializado. Selecione um arquivo Excel para começar.";
+        statusEl.className = "status info";
+        statusEl.style.display = "block";
+      } else if (message.type === 'importacao-concluida') {
+        statusEl.textContent = message.mensagem;
+        statusEl.className = "status success";
+      } else if (message.type === 'erro') {
+        statusEl.textContent = message.mensagem;
+        statusEl.className = "status error";
+      }
+    };
+  </script>
+</body>
+</html> 

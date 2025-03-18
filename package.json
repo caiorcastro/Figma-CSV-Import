@@ -1,14 +1,16 @@
 {
   "name": "figma-csv-import",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "dist/code.js",
   "scripts": {
+    "build": "rollup -c",
+    "dev": "rollup -c -w",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
+  "keywords": ["figma", "plugin", "csv", "excel", "import"],
   "author": "",
   "license": "ISC",
-  "description": "",
+  "description": "Plugin para importar dados de jogos de futebol do CSV/Excel para o Figma, criando cards automáticos.",
   "devDependencies": {
     "@figma/plugin-typings": "^1.109.0",
     "@rollup/plugin-commonjs": "^28.0.3",
