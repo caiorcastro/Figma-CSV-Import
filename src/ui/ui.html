@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>CSV Import - Times de Futebol</title>
+  <title>CSV Import - Jogos de Futebol</title>
   <style>
     body {
       font-family: 'Inter', sans-serif;
@@ -13,6 +13,10 @@
     h2 {
       margin-top: 0;
       color: #333;
+    }
+    p {
+      margin-bottom: 16px;
+      line-height: 1.5;
     }
     .container {
       display: flex;
@@ -62,19 +66,88 @@
       color: #3498DB;
       display: block;
     }
+    .warning {
+      background-color: #FEF9E7;
+      color: #F39C12;
+      display: block;
+    }
     .file-info {
       margin-top: 8px;
       font-size: 14px;
+    }
+    .instructions {
+      background-color: #F8F9F9;
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+    .progress-container {
+      margin-top: 16px;
+      display: none;
+    }
+    .progress-bar {
+      width: 100%;
+      background-color: #f3f3f3;
+      border-radius: 4px;
+      height: 8px;
+      overflow: hidden;
+    }
+    .progress {
+      height: 100%;
+      background-color: #18A0FB;
+      width: 0%;
+      transition: width 0.3s;
+    }
+    .form-group {
+      margin-bottom: 12px;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 4px;
+      font-weight: 500;
+    }
+    .form-group input[type="text"] {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .tip {
+      font-size: 13px;
+      color: #666;
+      margin-top: 4px;
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <h2>Importar Times de Futebol</h2>
-    <p>Este plugin importa dados de planilhas Excel/XLSX e cria cards para cada time de futebol.</p>
+    <h2>Importar Jogos de Futebol</h2>
+    
+    <div class="instructions">
+      <p><strong>Como usar:</strong></p>
+      <ol>
+        <li>Crie um frame no Figma com os seguintes elementos nomeados:</li>
+        <ul>
+          <li>Elementos de texto: "Time A", "Time B", "Odd A", "Odd B", "Odd Empate", "Campeonato", "Data", "Hora"</li>
+          <li>Retângulos para imagens: "Imagem Time A", "Imagem Time B"</li>
+        </ul>
+        <li>Selecione o frame que servirá como template</li>
+        <li>Informe a URL base para carregar as imagens dos times</li>
+        <li>Carregue o arquivo Excel com os dados dos jogos</li>
+        <li>Clique em "Importar Dados" para criar os posts</li>
+      </ol>
+    </div>
+    
+    <div class="form-group">
+      <label for="baseURL">URL Base para Imagens:</label>
+      <input type="text" id="baseURL" placeholder="https://meu-repositorio.com/imagens/" />
+      <div class="tip">Esta URL será combinada com os caminhos das imagens na planilha. Ex: https://raw.githubusercontent.com/user/repo/main/</div>
+    </div>
     
     <div class="file-upload">
-      <label for="arquivo">Selecione a planilha:</label>
+      <label for="arquivo">Selecione a planilha de jogos:</label>
       <input type="file" id="arquivo" accept=".xlsx,.xls" />
       <div id="file-info" class="file-info"></div>
     </div>
@@ -83,6 +156,13 @@
     <button id="fechar">Fechar Plugin</button>
     
     <div id="status" class="status"></div>
+    
+    <div id="progress-container" class="progress-container">
+      <div class="progress-bar">
+        <div id="progress" class="progress"></div>
+      </div>
+      <div id="progress-text" style="margin-top: 8px; font-size: 14px;"></div>
+    </div>
   </div>
 
   <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
@@ -91,8 +171,12 @@
     const importarBtn = document.getElementById('importar');
     const fecharBtn = document.getElementById('fechar');
     const arquivoInput = document.getElementById('arquivo');
+    const baseURLInput = document.getElementById('baseURL');
     const fileInfoEl = document.getElementById('file-info');
     const statusEl = document.getElementById('status');
+    const progressContainer = document.getElementById('progress-container');
+    const progressBar = document.getElementById('progress');
+    const progressText = document.getElementById('progress-text');
     
     // Armazenar os dados processados
     let dadosProcessados = null;
@@ -126,8 +210,29 @@
           dadosProcessados = XLSX.utils.sheet_to_json(planilha);
           
           if (dadosProcessados && dadosProcessados.length > 0) {
-            statusEl.textContent = `Arquivo processado com sucesso! Encontrados ${dadosProcessados.length} registros.`;
-            statusEl.className = "status success";
+            // Verificar os cabeçalhos esperados
+            const primeiroItem = dadosProcessados[0];
+            const cabecalhosEsperados = [
+              "Nome do Campeonato", "Time A", "Time B", "Odd A", "Odd B", "Odd Empate", 
+              "Data", "Hora", "A 150x150", "B 150x150", "A 300x300", "B 300x300"
+            ];
+            
+            const cabecalhosPresentes = cabecalhosEsperados.filter(cabecalho => 
+              primeiroItem.hasOwnProperty(cabecalho)
+            );
+            
+            if (cabecalhosPresentes.length < cabecalhosEsperados.length) {
+              const cabecalhosFaltantes = cabecalhosEsperados.filter(
+                cabecalho => !cabecalhosPresentes.includes(cabecalho)
+              );
+              
+              statusEl.textContent = `Atenção: Alguns cabeçalhos esperados estão faltando na planilha: ${cabecalhosFaltantes.join(", ")}. Você pode continuar, mas alguns dados podem não ser preenchidos corretamente.`;
+              statusEl.className = "status warning";
+            } else {
+              statusEl.textContent = `Arquivo processado com sucesso! Encontrados ${dadosProcessados.length} jogos.`;
+              statusEl.className = "status success";
+            }
+            
             importarBtn.disabled = false;
           } else {
             statusEl.textContent = "Não foram encontrados dados válidos na planilha.";
@@ -161,14 +266,30 @@
         return;
       }
       
+      const baseURL = baseURLInput.value.trim();
+      
+      if (!baseURL) {
+        statusEl.textContent = "Atenção: URL base não informada. As imagens não serão carregadas automaticamente.";
+        statusEl.className = "status warning";
+      }
+      
+      // Certificar-se que a URL base termina com uma barra, se não estiver vazia
+      const formattedBaseURL = baseURL && !baseURL.endsWith('/') ? baseURL + '/' : baseURL;
+      
       statusEl.textContent = "Importando dados, aguarde...";
       statusEl.className = "status info";
+      
+      // Mostrar barra de progresso
+      progressContainer.style.display = "block";
+      progressBar.style.width = "10%";
+      progressText.textContent = "Iniciando importação...";
       
       // Enviar mensagem para o plugin com os dados processados
       parent.postMessage({ 
         pluginMessage: { 
           type: 'importar-dados',
-          dados: dadosProcessados
+          dados: dadosProcessados,
+          baseURL: formattedBaseURL
         } 
       }, '*');
     };
@@ -178,22 +299,94 @@
       parent.postMessage({ pluginMessage: { type: 'fechar' } }, '*');
     };
     
+    // Função para carregar uma imagem de uma URL e retornar como base64
+    async function carregarImagemComoBase64(url) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";  // Permite carregar imagens de outros domínios
+        
+        img.onload = () => {
+          try {
+            // Criar um canvas para desenhar a imagem
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            
+            // Desenhar a imagem no canvas
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            
+            // Converter para base64
+            const dataURL = canvas.toDataURL('image/png');
+            resolve(dataURL);
+          } catch (error) {
+            reject(error);
+          }
+        };
+        
+        img.onerror = () => {
+          reject(new Error(`Falha ao carregar a imagem: ${url}`));
+        };
+        
+        // Definir a URL da imagem
+        img.src = url;
+      });
+    }
+    
     // Ouvir mensagens do plugin
-    window.onmessage = (event) => {
+    window.onmessage = async (event) => {
       const message = event.data.pluginMessage;
       
       if (!message) return;
       
       if (message.type === 'init') {
-        statusEl.textContent = "Plugin inicializado. Selecione um arquivo Excel para começar.";
+        statusEl.textContent = "Plugin inicializado. Selecione um arquivo Excel com os dados dos jogos e certifique-se de ter selecionado um frame para usar como template.";
         statusEl.className = "status info";
         statusEl.style.display = "block";
+      } else if (message.type === 'carregar-imagem') {
+        // Quando o plugin solicitar para carregar uma imagem
+        try {
+          const url = message.url;
+          const dataURL = await carregarImagemComoBase64(url);
+          
+          // Devolver os dados da imagem para o plugin
+          parent.postMessage({ 
+            pluginMessage: { 
+              type: 'imagem-carregada',
+              url: url,
+              data: dataURL
+            } 
+          }, '*');
+        } catch (error) {
+          parent.postMessage({ 
+            pluginMessage: { 
+              type: 'erro-carregar-imagem',
+              url: message.url,
+              erro: error.message
+            } 
+          }, '*');
+        }
+      } else if (message.type === 'progresso') {
+        progressText.textContent = message.mensagem;
+        // Atualizando a barra de progresso
+        if (message.mensagem.includes("Processando jogo")) {
+          const match = message.mensagem.match(/Processando jogo (\d+) de (\d+)/);
+          if (match) {
+            const atual = parseInt(match[1]);
+            const total = parseInt(match[2]);
+            const porcentagem = Math.min(10 + Math.round((atual / total) * 80), 90);
+            progressBar.style.width = `${porcentagem}%`;
+          }
+        }
       } else if (message.type === 'importacao-concluida') {
         statusEl.textContent = message.mensagem;
         statusEl.className = "status success";
+        progressBar.style.width = "100%";
+        progressText.textContent = "Importação concluída!";
       } else if (message.type === 'erro') {
         statusEl.textContent = message.mensagem;
         statusEl.className = "status error";
+        progressContainer.style.display = "none";
       }
     };
   </script>
